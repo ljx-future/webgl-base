@@ -1,0 +1,76 @@
+### VisualStudioCode template
+.vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+### Example user template template
+### Example user template
+
+# IntelliJ project files
+.idea
+*.iml
+out
+gen
+### Vue template
+# gitignore template for Vue.js projects
+#
+# Recommended template: Node.gitignore
+
+# TODO: where does this rule come from?
+docs/_book
+
+# TODO: where does this rule come from?
+test/
+
+### Vuejs template
+# Recommended template: Node.gitignore
+
+node_modules/
+dist/
+npm-debug.log
+yarn-error.log
+
+### Example user template template
+### Example user template
+
+.DS_Store
+node_modules
+/dist
+/digital
+
+/tests/e2e/videos/
+/tests/e2e/screenshots/
+
+# npmrc files
+# .npmrc
+
+# local env files
+.env.local
+.env.*.local
+
+*.zip
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw*
+*.iws
+*.ipr
+
