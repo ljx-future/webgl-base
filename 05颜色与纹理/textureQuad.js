@@ -18,7 +18,6 @@ var FSHADER_SOURCE = `
   }
 `
 function main() {
-  JSON.stringify()
   const canvas = document.getElementById('webgl');
   const gl = canvas.getContext('webgl');
   if (!gl) {
