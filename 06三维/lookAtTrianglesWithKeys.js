@@ -4,10 +4,11 @@ import Matrix4 from "../Matrix4.js";
 const VSHADER_SOURCE = `
   attribute vec4 a_Position;
   attribute vec4 a_Color;
+  uniform mat4 u_ProjectMatrix;
   uniform mat4 u_ViewMatrix;
   varying vec4 v_Color;
   void main() {
-    gl_Position = u_ViewMatrix * a_Position;
+    gl_Position = u_ProjectMatrix * u_ViewMatrix * a_Position;
     v_Color = a_Color;
   }
   `
@@ -19,6 +20,7 @@ const FSHADER_SOURCE = `
   }
   `
 function main() {
+  
   const canvas = document.getElementById('webgl');
   const gl = canvas.getContext('webgl');
   if (!gl) {
@@ -36,16 +38,25 @@ function main() {
       console.log('设置顶点位置错误')
       return
     }
-    // 视图矩阵 * 模型矩阵
+    // 视图矩阵
     const u_ViewMatrix = gl.getUniformLocation(gl.program, 'u_ViewMatrix')
     if (!u_ViewMatrix) {
       console.log('获取u_ViewMatrix失败')
       return
     }
+    // 投影矩阵
+    const u_ProjectMatrix = gl.getUniformLocation(gl.program, 'u_ProjectMatrix')
+    if (!u_ProjectMatrix) {
+      console.log('获取u_ProjectMatrix失败')
+      return
+    }
     const viewMatrix = new Matrix4()
+    const projectMatrix = new Matrix4()
     document.onkeydown = function (ev) {
       keydown(ev, gl, n, u_ViewMatrix, viewMatrix)
     }
+    projectMatrix.setOrtho(-1.0,1.0,-1.0,1.0,0.0,2.0)
+    gl.uniformMatrix4fv(u_ProjectMatrix, false, projectMatrix.matrix)
     draw(gl, n, u_ViewMatrix, viewMatrix)
   }
 }
