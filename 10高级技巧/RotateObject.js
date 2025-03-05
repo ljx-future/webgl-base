@@ -1,59 +1,23 @@
-// 顶点着色器
 import { initShaders } from "../initShaders.js";
 import Matrix4 from "../Matrix4.js";
-let VSHADER_SOURCE =
-    'attribute vec4 a_Position;\n' +
-    'attribute vec4 a_Normal;\n' +        // 法向量
-    'uniform mat4 u_MvpMatrix;\n' +
-    'uniform mat4 u_ModelMatrix;\n' +    // 模型矩阵 -- 进行变换
-    'uniform mat4 u_NormalMatrix;\n' +    // 用来变换法向量的矩阵 -- 逆转置矩阵
-    'varying vec3 v_Position;\n' +
-    'varying vec3 v_Normal;\n' +
-    'varying vec4 v_Color;\n' +
-    'void main() {\n' +
-    '  gl_Position = u_MvpMatrix * a_Position;\n' +
-    // Make the length of the normal 1.0
-    // 计算变换后的法向量并归一化
-    '  v_Normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-    '  v_Position = vec3(u_ModelMatrix * a_Position);\n' +
-    '  v_Color = vec4(1.0, 0.4, 0.0, 1.0);\n' +
-    '}\n';
-
-// Fragment shader program
-let FSHADER_SOURCE =
-    '#ifdef GL_ES\n' +
-    'precision mediump float;\n' +
-    '#endif\n' +
-    'uniform vec3 u_LightColor;\n' +     // 光线颜色
-    'uniform vec3 u_LightDirection;\n' + // 归一化的世界坐标 (in the world coordinate, normalized)
-    'uniform vec3 u_AmbientLight;\n' +  // 环境光颜色
-    'varying vec3 v_Position;\n' +
-    'varying vec3 v_Normal;\n' +
-    'varying vec4 v_Color;\n' +
-    'void main() {\n' +
-    // Make the length of the normal 1.0
-    // 计算变换后的法向量并归一化
-    '  vec3 normal = normalize(v_Normal);\n' +
-    // Dot product of the light direction and the orientation of a surface (the normal)
-    '  float nDotL = max(dot(u_LightDirection, normal), 0.0);\n' +
-    // Calculate the color due to diffuse reflection
-    // 计算漫反射光的颜色
-    '  vec3 diffuse = u_LightColor * vec3(v_Color) * nDotL;\n' +
-    // 计算环境光产生的反射光颜色
-    '  vec3 ambient = u_AmbientLight * vec3(v_Color);\n' +
-    '  gl_FragColor = vec4(diffuse + ambient, v_Color.a);\n' +
-    '}\n';
-// Rotation angle (degrees/second)
-const ANGLE_STEP = 3.0; // 递增/递减的长度
-let g_arm1_angle = 90.0 // arm1 第一节大臂的旋转角度
-let g_arm2_angle = 45.0 // arm2 第二节小臂的旋转角度
-let g_handle_angle = 0.0 // handle 手掌的旋转角度
-let g_finger_angle = 0.0 // finger1 手指的旋转角度
-let vpMatrix = new Matrix4()
-let mvpMatrix = new Matrix4()
-let baseMatrix = new Matrix4()
-let modelMatrix = new Matrix4()
-let normalMatrix = new Matrix4()
+var VSHADER_SOURCE = `
+  attribute vec4 a_Position;
+  attribute vec2 a_TexCoord;
+  uniform mat4 u_MvpMatrix;
+  varying vec2 v_TexCoord;
+  void main() {
+    gl_Position = u_MvpMatrix * a_Position;
+    v_TexCoord = a_TexCoord;
+  }
+`
+var FSHADER_SOURCE = `
+  precision mediump float;
+  uniform sampler2D u_Sampler;
+  varying vec2 v_TexCoord;
+  void main() {
+    gl_FragColor = texture2D(u_Sampler, v_TexCoord);
+  }
+`
 function main() {
     const canvas = document.getElementById('webgl');
     const gl = canvas.getContext('webgl');
@@ -76,90 +40,107 @@ function main() {
         gl.clearColor(0.0, 0.0, 0.0, 1.0); // 设置清除颜色为黑色
         // 开启隐藏面消除功能
         gl.enable(gl.DEPTH_TEST);
-
-        // 获取映射的变量
-        let u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
-        let u_LightColor = gl.getUniformLocation(gl.program, 'u_LightColor');
-        let u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
-        let u_AmbientLight = gl.getUniformLocation(gl.program, 'u_AmbientLight');
-        let u_NormalMatrix = gl.getUniformLocation(gl.program, 'u_NormalMatrix');
-        let u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
-        if (!u_MvpMatrix || !u_LightColor || !u_LightDirection || !u_AmbientLight || !u_NormalMatrix || !u_ModelMatrix) {
-            console.log('Failed to get the storage location');
-            return;
+        const u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix')
+        if (!u_MvpMatrix) {
+            console.log('failed')
+            return
         }
-        // 光线颜色
-        gl.uniform3f(u_LightColor, 1.0, 1.0, 1.0);
-        // 设置归一化世界坐标 (在世界坐标系)
-        let lightDirection = new Vector3([0.0, 0.5, 0.7]);
-        lightDirection.normalize();     // 归一化
-        gl.uniform3fv(u_LightDirection, lightDirection.elements);
+        // 配置视图投影矩阵
+        const vpMatrix = new Matrix4()
+        const mvpMatrix = new Matrix4()
+        vpMatrix.setPerspective(30.0, canvas.width / canvas.height, 1.0, 100.0);
+        vpMatrix.lookAt(3.0, 3.0, 7.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+        // 注册鼠标事件
+        let currentAngle = [0.0, 0.0]
+        initEventHandlers(canvas, currentAngle)
+        // 设置纹理
+        if (!initTextures(gl)) {
+            console.log('设置纹理错误')
+            return
+        }
+        let tick = function () {
+            // 渲染
 
-        // 环境光颜色
-        gl.uniform3f(u_AmbientLight, 0.2, 0.2, 0.2)
-
-        // 模型视图投影矩阵
-        vpMatrix.setPerspective(50, canvas.width / canvas.height, 1, 100)
-        vpMatrix.lookAt(20.0, 10.0, 30.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-        console.log("vpMatrix", vpMatrix.matrix);
-
-        draw(gl, n, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix)
-        document.onkeydown = function (ev) { keydown(ev, gl, n, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix); };
+            draw(gl, n, vpMatrix, mvpMatrix, u_MvpMatrix, currentAngle)
+            requestAnimationFrame(tick)
+        }
+        tick()
 
     }
 }
-
-function keydown(event, gl, n, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix) {
-    switch (event.keyCode) {
-        case 39: // Right arrow key -> the positive rotation of arm1 around the y-axis
-            g_arm1_angle = (g_arm1_angle + ANGLE_STEP) % 360;
-            break;
-        case 37: // Left arrow key -> the negative rotation of arm1 around the y-axis
-            g_arm1_angle = (g_arm1_angle - ANGLE_STEP) % 360;
-            break;
-        case 40: // Up arrow key -> the positive rotation of joint1 around the z-axis
-            if (g_arm2_angle < 135.0) g_arm2_angle += ANGLE_STEP;
-            break;
-        case 38: // Down arrow key -> the negative rotation of joint1 around the z-axis
-            if (g_arm2_angle > -135.0) g_arm2_angle -= ANGLE_STEP;
-            break;
-        case 90: // 'ｚ'key -> the positive rotation of joint2
-            g_handle_angle = (g_handle_angle + ANGLE_STEP) % 360;
-            break;
-        case 88: // 'x'key -> the negative rotation of joint2
-            g_handle_angle = (g_handle_angle - ANGLE_STEP) % 360;
-            break;
-        case 86: // 'v'key -> the positive rotation of joint3
-            if (g_finger_angle < 60.0) g_finger_angle = (g_finger_angle + ANGLE_STEP) % 360;
-            break;
-        case 67: // 'c'key -> the nagative rotation of joint3
-            if (g_finger_angle > -60.0) g_finger_angle = (g_finger_angle - ANGLE_STEP) % 360;
-            break;
+function initEventHandlers(canvas, currentAngle) {
+    let dragging = false;
+    let lastX = -1, lastY = -1;
+    canvas.onmousedown = function (ev) {
+        let x = ev.clientX, y = ev.clientY;
+        let rect = ev.target.getBoundingClientRect();
+        if (rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom) {
+            lastX = x;
+            lastY = y;
+            dragging = true
+        }
     }
-    draw(gl, n, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix)
+    canvas.onmouseup = function (ev) {
+        dragging = false
+
+    }
+
+    canvas.onmousemove = function (ev) {
+        let x = ev.clientX, y = ev.clientY;
+
+        if (dragging) {
+            let factor = 100 / canvas.height
+            let dx = factor * (x - lastX)
+            let dy = factor * (y - lastY)
+            // 将沿Y轴旋转的角度控制在-90到90之间
+            currentAngle[0] = Math.max(-90.0, Math.min(90.0, currentAngle[0] + dy))
+            currentAngle[1] = currentAngle[1] + dx
+        }
+        lastX = x;
+        lastY = y;
+    }
+}
+function draw(gl, n, vpMatrix, mvpMatrix, u_MvpMatrix, currentAngle) {
+    // 计算模型视图投影矩阵
+    mvpMatrix.set(vpMatrix)
+    mvpMatrix.rotate(currentAngle[0], 1.0, 0.0, 0.0)
+    mvpMatrix.rotate(currentAngle[1], 0.0, 1.0, 0.0)
+    gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.matrix)
+
+    // 清除深度缓冲区   深度缓冲区 也称Z缓冲区
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    // 绘制图形
+    gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0);
 }
 // 配置顶点位置
 function initVertexBuffers(gl) {
+    // Create a cube
+    //    v6----- v5
+    //   /|      /|
+    //  v1------v0|
+    //  | |     | |
+    //  | |v7---|-|v4
+    //  |/      |/
+    //  v2------v3
     // 坐标
     let vertices = new Float32Array([
-        0.5, 1.0, 0.5, -0.5, 1.0, 0.5, -0.5, 0.0, 0.5, 0.5, 0.0, 0.5, // v0-v1-v2-v3 front
-        0.5, 1.0, 0.5, 0.5, 0.0, 0.5, 0.5, 0.0, -0.5, 0.5, 1.0, -0.5, // v0-v3-v4-v5 right
-        0.5, 1.0, 0.5, 0.5, 1.0, -0.5, -0.5, 1.0, -0.5, -0.5, 1.0, 0.5, // v0-v5-v6-v1 up
-        -0.5, 1.0, 0.5, -0.5, 1.0, -0.5, -0.5, 0.0, -0.5, -0.5, 0.0, 0.5, // v1-v6-v7-v2 left
-        -0.5, 0.0, -0.5, 0.5, 0.0, -0.5, 0.5, 0.0, 0.5, -0.5, 0.0, 0.5, // v7-v4-v3-v2 down
-        0.5, 0.0, -0.5, -0.5, 0.0, -0.5, -0.5, 1.0, -0.5, 0.5, 1.0, -0.5  // v4-v7-v6-v5 back
-    ]);
-    // Normal
-    let normals = new Float32Array([
-        0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, // v0-v1-v2-v3 front
-        1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, // v0-v3-v4-v5 right
-        0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, // v0-v5-v6-v1 up
-        -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, // v1-v6-v7-v2 left
-        0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, // v7-v4-v3-v2 down
-        0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0  // v4-v7-v6-v5 back
-    ]);
-
-    // Indices of the vertices
+        // 正方体的顶点坐标
+        1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0,  // v0-v1-v2-v3 front
+        1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0,  // v0-v3-v4-v5 right
+        1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0,  // v0-v5-v6-v1 up
+        -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0,  // v1-v6-v7-v2 left
+        -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0,  // v7-v4-v3-v2 down
+        1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0   // v4-v7-v6-v5 back
+    ])
+    let texCoords = new Float32Array([
+        1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v0-v1-v2-v3 front
+        0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,    // v0-v3-v4-v5 right
+        1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,    // v0-v5-v6-v1 up
+        1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v1-v6-v7-v2 left
+        0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0,    // v7-v4-v3-v2 down
+        0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0     // v4-v7-v6-v5 back
+    ])
+    // 索引
     let indices = new Uint8Array([
         0, 1, 2, 0, 2, 3,    // front
         4, 5, 6, 4, 6, 7,    // right
@@ -167,13 +148,13 @@ function initVertexBuffers(gl) {
         12, 13, 14, 12, 14, 15,    // left
         16, 17, 18, 16, 18, 19,    // down
         20, 21, 22, 20, 22, 23     // back
-    ]);
+    ])
 
     // 创建缓冲区对象
-    if (!bindBuffer(gl, vertices, 'a_Position')) {
+    if (!bindBuffer(gl,3 ,vertices, 'a_Position')) {
         return -1
     }
-    if (!bindBuffer(gl, normals, 'a_Normal')) {
+    if (!bindBuffer(gl, 2,texCoords, 'a_TexCoord')) {
         return -1
     }
     const indicesBuffer = gl.createBuffer();
@@ -186,9 +167,8 @@ function initVertexBuffers(gl) {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
     return indices.length
 }
-
 // 配置缓冲区
-function bindBuffer(gl, data, attribute) {
+function bindBuffer(gl,num, data, attribute) {
     // 创建缓冲区
     const attributeBuffer = gl.createBuffer();
     if (!attributeBuffer) {
@@ -200,65 +180,59 @@ function bindBuffer(gl, data, attribute) {
     // 顶点坐标
     const a_attribute = gl.getAttribLocation(gl.program, attribute)
     if (a_attribute < 0) {
-        console.log(attribute + '获取失败')
+        console.log('获取a_Position失败：', attribute)
         return false;
     }
-    gl.vertexAttribPointer(a_attribute, 3, gl.FLOAT, false, 0, 0)
+    gl.vertexAttribPointer(a_attribute, num, gl.FLOAT, false, 0, 0)
     gl.enableVertexAttribArray(a_attribute)
     return true
 }
-function draw(gl, n, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix) {
-    // 清除深度缓冲区   深度缓冲区 也称Z缓冲区
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-    let baseHeight = 2.0;
-    // 绘制底座
-    modelMatrix.setTranslate(0.0, -12.0, 0.0)
-    drawBox(gl, n, 10, baseHeight, 10, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix)
 
-    // 绘制arm1大臂
-    let armLength = 10.0;
-    modelMatrix.translate(0.0, baseHeight, 0.0)
-    modelMatrix.rotate(g_arm1_angle, 0, 1.0, 0)
-    drawBox(gl, n, 3, armLength, 3, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix)
-    // 绘制arm2小臂
-    modelMatrix.translate(0.0, armLength, 0.0)
-    modelMatrix.rotate(g_arm2_angle, 0, 0, 1)
-    drawBox(gl, n, 4, armLength, 4, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix)
-    // 绘制handle手掌
-    let handleLength = 2.0
-    modelMatrix.translate(0.0, armLength, 0.0)
-    modelMatrix.rotate(g_handle_angle,0,1,0)
-    drawBox(gl, n, 3, handleLength, 6, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix)
-
-    // 手指模型的平移定位
-    modelMatrix.translate(0.0, handleLength, 0.0)
-    baseMatrix.set(modelMatrix)
-    // 绘制手指1
-    let fingerLength = 2.0
-    modelMatrix.translate(0, 0, 2)
-    modelMatrix.rotate(g_finger_angle, 1, 0, 0)
-    drawBox(gl, n, 1, fingerLength, 1, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix, 'finger')
-    // 绘制手指2
-    modelMatrix.translate(0, 0, -2)
-    modelMatrix.rotate(-g_finger_angle, 1, 0, 0)
-    drawBox(gl, n, 1, fingerLength, 1, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix, 'finger')
-}
-function drawBox(gl, n, width, height, depth, u_ModelMatrix, u_MvpMatrix, u_NormalMatrix,type = '') {
-    if (type !== 'finger') {
-        baseMatrix.set(modelMatrix)
+// 设置纹理
+function initTextures(gl) {
+    // 创建纹理对象
+    const texture = gl.createTexture()
+    if (!texture) {
+        console.log('创建纹理对象失败')
+        return false
     }
-    modelMatrix.scale(width, height, depth)
-    mvpMatrix.set(vpMatrix).multiply(modelMatrix);
+    // 获取纹理的u_Sampler的存储位置
+    const u_Sampler = gl.getUniformLocation(gl.program, 'u_Sampler')
+    if (!u_Sampler) {
+        console.log('获取u_Sampler失败')
+        return false
+    }
+    // 创建图像对象
+    const image = new Image()
+    // 注册图像加载事件的响应函数
+    image.onload = function () {
+        loadTexture(gl, texture, u_Sampler, image)
+    }
+    image.src = '../public/demo.png'
+    return true
+}
+function loadTexture(gl, texture, u_Sampler, image) {
+    // 对纹理图形进行Y轴反转
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
+    console.log('绑定纹理...');
+    // 开启0号纹理单元
+    gl.activeTexture(gl.TEXTURE0)
+    // 绑定纹理对象到纹理单元
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    console.log('纹理绑定状态:', gl.isTexture(texture));
+    // 设置纹理对象参数
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    // 部分 WebGL 实现可能会限制非 2^n 图像的 MIRRORED_REPEAT 或 REPEAT 模式
+    // 尝试将图片尺寸调整为 2 的幂次方，例如 256x256 或 512x512。如果无法调整图片，改用 CLAMP_TO_EDGE 模式
+    // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.matrix)
-    gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.matrix)
-    // 根据模型矩阵计算用来变换法向量的矩阵
-    // 得到模型矩阵的逆转置矩阵
-    normalMatrix.setInverseOf(modelMatrix)
-    normalMatrix.transpose()
-    gl.uniformMatrix4fv(u_NormalMatrix, false, normalMatrix.matrix)
-    // 绘制图形
-    gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0);
-    modelMatrix.set(baseMatrix)
+    // 设置纹理图像
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image)
+    console.log('纹理图像尺寸:', image.width, image.height);
+    // 将0号纹理传递给着色器
+    gl.uniform1i(u_Sampler, 0)
+    console.log('传递纹理给着色器...');
+
 }
 main()

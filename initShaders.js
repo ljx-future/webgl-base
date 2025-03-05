@@ -8,7 +8,7 @@ export function initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE) {
     return true
 }
 
-function createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE) {
+export function createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE) {
     const vertexShader = loadShader(gl, gl.VERTEX_SHADER, VSHADER_SOURCE)
     const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, FSHADER_SOURCE)
     if (!vertexShader || !fragmentShader) {

@@ -17,15 +17,15 @@ const matrixAction = {
         let radian = Math.PI * ANGLT / 180.0  //转为弧度制
         const cos = Math.cos(radian)
         const sin = Math.sin(radian)
-        let matrixData
+        let matrixData = []
         if (x == 1) {
-            matrixData = matrixType['rotate']['x'](sin, cos)
+            matrixData.push(matrixType['rotate']['x'](sin, cos))
         }
         if (y == 1) {
-            matrixData = matrixType['rotate']['y'](sin, cos)
+            matrixData.push(matrixType['rotate']['y'](sin, cos))
         }
         if (z == 1) {
-            matrixData = matrixType['rotate']['z'](sin, cos)
+            matrixData.push(matrixType['rotate']['z'](sin, cos))
         }
         return matrixData
     },
@@ -58,22 +58,29 @@ export default class Matrix4 {
         this.matrixArr = math.multiply(matrixData.matrixArr, this.matrixArr)
         return this;
     }
+    multiplyVector4(arr) {
+        const matrixData = math.matrix(arr)
+        this.matrixArr = math.multiply(matrixData, this.matrixArr)
+        return this;
+    }
 
     translate(dx, dy, dz) {
         // 位移距离
         const matrixData = matrixAction['translate'](dx, dy, dz)
-        this.matrixArr = math.multiply(matrixData,this.matrixArr)
+        this.matrixArr = math.multiply(matrixData, this.matrixArr)
     }
 
     rotate(ANGLT, x, y, z) {
-        const matrixData = matrixAction['rotate'](ANGLT, x, y, z)
-        this.matrixArr = math.multiply(matrixData,this.matrixArr )
+        const list = matrixAction['rotate'](ANGLT, x, y, z)
+        list.forEach((item) => {
+            this.matrixArr = math.multiply(item, this.matrixArr)
+        })
     }
 
     scale(sx, sy, sz) {
         // 缩放倍数
         const matrixData = matrixAction['scale'](sx, sy, sz)
-        this.matrixArr = math.multiply(matrixData,this.matrixArr)
+        this.matrixArr = math.multiply(matrixData, this.matrixArr)
     }
 
     // 设置观察矩阵
@@ -97,7 +104,18 @@ export default class Matrix4 {
     }
 
     setRotate(ANGLT, x, y, z) {
-        this.matrixArr = matrixAction['rotate'](ANGLT, x, y, z)
+        const list = matrixAction['rotate'](ANGLT, x, y, z)
+        if (list.length > 1) {
+            list.forEach((item, index) => {
+                if (index == 0) {
+                    this.matrixArr = item
+                } else {
+                    this.matrixArr = math.multiply(item, this.matrixArr)
+                }
+            })
+        } else {
+            this.matrixArr = list[0]
+        }
     }
 
     setScale(sx, sy, sz) {

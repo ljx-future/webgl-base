@@ -1,8 +1,17 @@
 import {initShaders} from "../initShaders.js";
 import Matrix4 from "../Matrix4.js";
 
-var VSHADER_SOURCE = 'attribute vec4 a_Position;\n' + 'attribute vec4 a_Color;\n' + 'uniform mat4 u_MvpMatrix;\n' + 'uniform mat4 u_ModelMatrix;\n' + 'uniform vec4 u_Eye;\n' +  // 视点
-    'varying vec4 v_Color;\n' + 'varying float v_Dist;\n' + 'void main() {\n' + '  gl_Position = u_MvpMatrix * a_Position;\n' + '  v_Color = a_Color;\n' + '  v_Dist = distance(u_ModelMatrix * a_Position, u_Eye);\n' + '}\n';
+var VSHADER_SOURCE =
+'attribute vec4 a_Position;\n' +
+'attribute vec4 a_Color;\n' +
+'uniform mat4 u_MvpMatrix;\n' +
+    'varying vec4 v_Color;\n' +
+    'varying float v_Dist;\n' +
+    'void main() {\n' +
+    '  gl_Position = u_MvpMatrix * a_Position;\n' +
+    '  v_Color = a_Color;\n' +
+    '  v_Dist = gl_Position.w;\n' +
+    '}\n';
 
 // Fragment shader program
 var FSHADER_SOURCE = '#ifdef GL_ES\n' + 'precision mediump float;\n' + '#endif\n' + 'uniform vec3 u_FogColor;\n' + 'uniform vec2 u_FogDist;\n' + 'varying vec4 v_Color;\n' + 'varying float v_Dist;\n' + 'void main() {\n' + '  float fogFactor = clamp((u_FogDist.y - v_Dist) / (u_FogDist.y - u_FogDist.x), 0.0, 1.0);\n' + '  vec3 color = mix(u_FogColor, vec3(v_Color), fogFactor);\n' + '  gl_FragColor = vec4(color, v_Color.a);\n' + '}\n';
@@ -36,18 +45,16 @@ function main() {
 
     // 获取映射的变量
     let u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
-    let u_Eye = gl.getUniformLocation(gl.program, 'u_Eye');
     let u_FogColor = gl.getUniformLocation(gl.program, 'u_FogColor');
     let u_FogDist = gl.getUniformLocation(gl.program, 'u_FogDist');
-    let u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
-    if (!u_MvpMatrix || !u_Eye || !u_FogColor || !u_FogDist || !u_ModelMatrix) {
+    if (!u_MvpMatrix || !u_FogColor || !u_FogDist) {
         console.log('Failed');
         return;
     }
 
     gl.uniform3fv(u_FogColor, fogColor)
     gl.uniform2fv(u_FogDist, fogDist)
-    gl.uniform4fv(u_Eye, eye)
+
 
     gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1.0)
     gl.enable(gl.DEPTH_TEST);
@@ -56,11 +63,10 @@ function main() {
     const mvpMatrix = new Matrix4()
     const modelMatrix = new Matrix4()
 
-    modelMatrix.setScale(10, 10, 10);
+    modelMatrix.setScale(8, 8, 8);
     mvpMatrix.setPerspective(30, canvas.width / canvas.height, 1, 1000)
     mvpMatrix.lookAt(eye[0], eye[1], eye[2], 0, 2, 0, 0, 1, 0)
     mvpMatrix.multiply(modelMatrix)
-    gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.matrix)
     gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.matrix)
     document.onkeydown = function(ev){ keydown(ev, gl, n, u_FogDist, fogDist); };
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
